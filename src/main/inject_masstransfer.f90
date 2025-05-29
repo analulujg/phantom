@@ -162,6 +162,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     nlayer = 0
     y_layer = 0.
     z_layer = 0.
+
+    injection_time(handled_layers) = time - time_between_layers
  endif 
 
 ! inject new layer
