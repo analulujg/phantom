@@ -859,7 +859,7 @@ endif
 ifeq ($(SETUP), masstransfer)
 #   Wind tunnel setup
     SETUPFILE= setup_masstransfer.f90
-    SRCINJECT= readwrite_mesa.f90 inject_masstransfer.f90 
+    SRCINJECT= readwrite_mesa.f90 utils_getneighbours.f90 utils_splitmerge.f90 splitpart.f90 inject_masstransfer.f90 
     GRAVITY=no
     KNOWN_SETUP=yes
     IND_TIMESTEPS=yes

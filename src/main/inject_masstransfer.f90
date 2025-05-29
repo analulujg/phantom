@@ -96,7 +96,7 @@ subroutine init_inject_masstransfer(time,dtlast,ierr)
  call calculate_lattice(lattice_type,rho_inf,pmass,wind_radius,&
       time_between_layers,nodd,neven,layer_even,layer_odd,distance_between_layers)
 
- nlayer_max = 2000
+ nlayer_max = 20000
  even_layer = .true.  ! choose first injected layer to be an even layer
  allocate(nlayer(handled_layers),ifirst(handled_layers),injection_time(handled_layers))
  allocate(y_layer(nlayer_max,handled_layers),z_layer(nlayer_max,handled_layers))
@@ -151,16 +151,29 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     call fatal('inject_particles','number of particles to be added in layer exceeds array size (nlayer > nlayer_max)')
  endif
 
- ! inject new layer
- if (time - injection_time(handled_layers) >= time_between_layers) then
+ if(.not. allocated(injection_time)) then
+    nlayer_max = 20000
+    even_layer = .true.  ! choose first injected layer to be an even layer
+    allocate(nlayer(handled_layers),ifirst(handled_layers),injection_time(handled_layers))
+    allocate(y_layer(nlayer_max,handled_layers),z_layer(nlayer_max,handled_layers))
+    
+    ! initialise arrays
+    injection_time = 0.
+    nlayer = 0
+    y_layer = 0.
+    z_layer = 0.
+ endif 
 
+! inject new layer
+if (time - injection_time(handled_layers) >= time_between_layers) then
+   
     ! shift array entries for old layers
     nlayer(1:handled_layers-1) = nlayer(2:handled_layers)
     injection_time(1:handled_layers-1) = injection_time(2:handled_layers)
     ifirst(1:handled_layers-1) = ifirst(2:handled_layers)
     y_layer(:,1:handled_layers-1) = y_layer(:,2:handled_layers)
     z_layer(:,1:handled_layers-1) = z_layer(:,2:handled_layers)
-
+ 
     if (even_layer) then
        allocate(xyz(3,neven))
        xyz(2:3,:) = layer_even(:,:)
@@ -230,6 +243,12 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
 
  irrational_number_close_to_one = 3./3.1415926536
  dtinject = (irrational_number_close_to_one*time_between_layers)
+
+!merge particles when npart= 4d6 particles, resetting arrays !1200 for testing
+ if(npart >= 5000) then
+   call merge_particles(npart,npartoftype,massoftype,xyzh,vxyzu)
+   deallocate(nlayer,ifirst,injection_time,y_layer,z_layer)
+ endif
 
 end subroutine inject_particles
 
@@ -436,6 +455,43 @@ subroutine delete_particles_inside_or_outside_sphere(center,radius,xyzi,hi,rever
 
 end subroutine delete_particles_inside_or_outside_sphere
 
+!---------------------------------------------------------------
+!+
+! Merge particles if npart>= 4 million particles
+!+
+!----------------------------------------------------------------
+
+subroutine merge_particles(npart,npartoftype,massoftype,xyzh,vxyzu)
+ use part, only:delete_dead_or_accreted_particles,isdead_or_accreted,kill_particle
+ use splitpart, only:merge_all_particles
+ integer, intent(inout) :: npart
+ integer, intent(inout) :: npartoftype(:)
+ real,    intent(inout) :: massoftype(:)
+ real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
+ integer :: nactive, i
+ integer, parameter :: nchild = 4
+
+print*, 'MERGE PARTICLES'
+print*, 'old npart = ',npart 
+ !-- how many active particles
+ nactive = 0
+ do i = 1,npart
+    if (.not.isdead_or_accreted(xyzh(4,i))) then
+       nactive = nactive + 1
+    else
+       call kill_particle(i,npartoftype)
+    endif
+ enddo
+
+if(nactive < npart) then
+   call delete_dead_or_accreted_particles(npart,npartoftype)
+endif
+
+call merge_all_particles(npart,npartoftype,massoftype,xyzh,vxyzu, &
+                              nchild,nactive)                      
+print*,' new npart = ',npart
+
+end subroutine merge_particles
 
 !----------------------------------------------------------------
 !+
