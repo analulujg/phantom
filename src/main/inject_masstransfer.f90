@@ -53,6 +53,7 @@ module inject
  logical, parameter   :: verbose=.false.
  integer              :: nlayer_max  ! memory (no. of particles) allocated to y_layer and z_layer arrays
  real, allocatable    :: time_mesa(:),mdot_mesa(:),injection_time(:),y_layer(:,:),z_layer(:,:)
+ real, allocatable    :: rad_mesa(:)
  integer, allocatable :: nlayer(:),ifirst(:)
 
 contains
@@ -80,12 +81,14 @@ subroutine init_inject_masstransfer(time,dtlast,ierr)
  integer              :: nodd,neven
  real                 :: pmass,cs_inf,pres_inf,rho_inf,distance_between_layers,time_between_layers
  real, allocatable    :: layer_even(:,:),layer_odd(:,:)
+ real                 :: rad_wind
 
  ierr = 0
 
  if (use_mesa_file) then
-    call read_masstransferrate(filemesa,time_mesa,mdot_mesa,ierr)
-    call interpolate_mdot(time,time_mesa,mdot_mesa,mdot)
+    call read_masstransferrate(filemesa,time_mesa,mdot_mesa,rad_mesa,ierr)
+    call interpolate_mdot(time,time_mesa,mdot_mesa,mdot,rad_mesa,rad_wind)
+    wind_radius = rad_wind
  else
     mdot = mdot_msun_yr * solarm / years * utime / umass
  endif
@@ -96,7 +99,7 @@ subroutine init_inject_masstransfer(time,dtlast,ierr)
  call calculate_lattice(lattice_type,rho_inf,pmass,wind_radius,&
       time_between_layers,nodd,neven,layer_even,layer_odd,distance_between_layers)
 
- nlayer_max = 2000
+ nlayer_max = 20000
  even_layer = .true.  ! choose first injected layer to be an even layer
  allocate(nlayer(handled_layers),ifirst(handled_layers),injection_time(handled_layers))
  allocate(y_layer(nlayer_max,handled_layers),z_layer(nlayer_max,handled_layers))
@@ -137,10 +140,15 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  real                   :: pmass,cs_inf,rho_inf,pres_inf,kill_rad,time_between_layers,distance_between_layers
  integer                :: i,k,ierr,nodd,neven
  real, allocatable      :: xyz(:,:),layer_even(:,:),layer_odd(:,:)
+ real                   :: rad_wind
 
  if (first_run) call init_inject_masstransfer(time,dtlast,ierr)
 
- if (use_mesa_file) call interpolate_mdot(time,time_mesa,mdot_mesa,mdot)
+ if (use_mesa_file) then
+    call interpolate_mdot(time,time_mesa,mdot_mesa,mdot,rad_mesa,rad_wind)
+    wind_radius = rad_wind
+    print*, 'WIND RADIUS: ',wind_radius
+endif  
  call calc_wind_properties(mdot,wind_radius,v_inf,mach,rho_inf,pres_inf,cs_inf,u_inf,h_inf)
 
  pmass = massoftype(igas)
@@ -151,16 +159,16 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     call fatal('inject_particles','number of particles to be added in layer exceeds array size (nlayer > nlayer_max)')
  endif
 
- ! inject new layer
- if (time - injection_time(handled_layers) >= time_between_layers) then
-
+! inject new layer
+if (time - injection_time(handled_layers) >= time_between_layers) then
+   
     ! shift array entries for old layers
     nlayer(1:handled_layers-1) = nlayer(2:handled_layers)
     injection_time(1:handled_layers-1) = injection_time(2:handled_layers)
     ifirst(1:handled_layers-1) = ifirst(2:handled_layers)
     y_layer(:,1:handled_layers-1) = y_layer(:,2:handled_layers)
     z_layer(:,1:handled_layers-1) = z_layer(:,2:handled_layers)
-
+ 
     if (even_layer) then
        allocate(xyz(3,neven))
        xyz(2:3,:) = layer_even(:,:)
@@ -442,16 +450,19 @@ end subroutine delete_particles_inside_or_outside_sphere
 !  Interpolation of the mass transfer rate from the mesa file
 !+
 !----------------------------------------------------------------
-subroutine interpolate_mdot(time,t_arr,mdot_arr,mdoti)
+subroutine interpolate_mdot(time,t_arr,mdot_arr,mdoti,rad_arr,rad_i)
  use table_utils, only: find_nearest_index,interp_1d
- real, intent(in)  :: time,t_arr(:),mdot_arr(:)
- real, intent(out) :: mdoti
- integer :: t1,t2,time_index
+ real, intent(in)  :: time,t_arr(:),mdot_arr(:),rad_arr(:)
+ real, intent(out) :: mdoti,rad_i
+ integer :: t1,t2,time_index,last_index
 
  call find_nearest_index(t_arr,time,time_index)
  t1 = time_index
  t2 = time_index + 1
- mdoti = interp_1d(time,t_arr(t1),t_arr(t2),mdot_arr(t1),mdot_arr(t2))
+ last_index= size(mdot_arr)
+ !mdoti = interp_1d(time,t_arr(t1),t_arr(t2),mdot_arr(t1),mdot_arr(t2))
+ mdoti = min(mdot_arr(t1)*(mdot_arr(t2)/mdot_arr(t1))**((time-t_arr(t1))/(t_arr(t2)-t_arr(t1))),mdot_arr(last_index))
+ rad_i = min(rad_arr(t1)*(rad_arr(t2)/rad_arr(t1))**((time-t_arr(t1))/(t_arr(t2)-t_arr(t1))), rad_arr(last_index))
 
 end subroutine interpolate_mdot
 
