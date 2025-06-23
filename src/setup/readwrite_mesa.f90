@@ -31,13 +31,13 @@ contains
 !  columns in code units.
 !+
 !-----------------------------------------------------------------------
-subroutine read_masstransferrate(filepath,time,mdot,ierr)
+subroutine read_masstransferrate(filepath,time,mdot,radius,ierr)
  use physcon,   only:solarm,solarr,years
  use fileutils, only:get_nlines,get_ncolumns,string_delete,lcase,read_column_labels
  use datafiles, only:find_phantom_datafile
  use units,     only:umass,utime
  character(len=*), intent(in)               :: filepath
- real, allocatable,dimension(:),intent(out) :: time,mdot
+ real, allocatable,dimension(:),intent(out) :: time,mdot,radius
  integer, intent(out)                       :: ierr
  integer                                    :: lines,i,ncols,nheaderlines,nlabels
  integer                                    :: iu
@@ -87,7 +87,7 @@ subroutine read_masstransferrate(filepath,time,mdot,ierr)
  call read_column_labels(iu,nheaderlines,ncols,nlabels,header)
  if (nlabels /= ncols) print*,' WARNING: different number of labels compared to columns'
  
- allocate(time(lines),mdot(lines))
+ allocate(time(lines),mdot(lines),radius(lines))
 
  ! read file forwards, from centre to surface
  do i = 1,lines
@@ -111,6 +111,8 @@ subroutine read_masstransferrate(filepath,time,mdot,ierr)
        time = dat(1:lines,i)
     case('mdot')
        mdot = dat(1:lines,i)
+    case('radius')
+       radius = dat(1:lines,i)
     case default
        got_column = .false.
     end select
